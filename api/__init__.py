@@ -71,6 +71,12 @@ def create_app(config_name):
     from api.equipments import equipments
     app.register_blueprint(equipments, url_prefix='/api')
 
+    from api.categories import categories
+    app.register_blueprint(categories, url_prefix='/api')
+
+    from api.parameters import parameters
+    app.register_blueprint(parameters, url_prefix='/api')
+
     from api.hospitals import hospitals
     app.register_blueprint(hospitals, url_prefix='/api')
 

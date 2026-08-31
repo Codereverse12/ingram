@@ -5,7 +5,8 @@ from faker import Faker
 from sqlalchemy.exc import IntegrityError
 from api import db
 import sqlalchemy as sa
-from api.models import User, Role, Hospital, Equipment, Installation
+from api.models import User, Role, Hospital, Equipment, Installation, \
+    EquipmentInstallation
 
 fake = Blueprint('fake', __name__)
 faker = Faker()
@@ -121,7 +122,10 @@ def installations(count):
             install_date=faker.date_time_between(start_date='-3y', end_date='now'),
             hospital_id=chosen_hospital.id,
             users=chosen_users,
-            equipments=chosen_equipments,
+            equipment_installations=[
+                EquipmentInstallation(equipment_id=equipment.id)
+                for equipment in chosen_equipments
+            ],
         )
         db.session.add(installation)
  

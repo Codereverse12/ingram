@@ -4,15 +4,17 @@ from apifairy import authenticate, body, response
 import sqlalchemy as sa
 
 from api import db
-from api.models import Equipment, Permission
-from api.schemas import EquipmentSchema
+from api.models import Equipment, EquipmentParameter, Parameter, Permission
+from api.schemas import EquipmentSchema, UpdateEquipmentSchema, \
+    EquipmentParameterSchema
 from api.auth import token_auth
 from api.decorators import permission_required, paginated_response
 
 equipments = Blueprint('equipments', __name__)
 equipment_schema = EquipmentSchema()
 equipments_schema = EquipmentSchema(many=True)
-update_equipment_schema = EquipmentSchema(partial=True)
+update_equipment_schema = UpdateEquipmentSchema(partial=True)
+equipment_parameters_schema = EquipmentParameterSchema(many=True)
 
 
 @equipments.route('/equipments', methods=['POST'])
@@ -65,12 +67,43 @@ def get_by_serial_number(serial_number):
 @permission_required(Permission.EQUIPMENT)
 @body(update_equipment_schema)
 @response(equipment_schema)
-@other_responses({403: 'Not allowed to edit this equipment',
+@other_responses({400: 'Serial number already in use',
+                  403: 'Not allowed to edit this equipment',
                   404: 'Equipment not found'})
 def put(data, id):
     """Edit an equipment"""
     equipment = db.session.get(Equipment, id) or abort(404)
+    serial_number = data.get('serial_number')
+    if serial_number and serial_number != equipment.serial_number and \
+            db.session.scalar(sa.select(Equipment).where(
+                Equipment.serial_number == serial_number)):
+        abort(400, 'Use a different serial number.')
     equipment.update(data)
+    db.session.commit()
+    return equipment
+
+
+@equipments.route('/equipments/<uuid:id>/parameters', methods=['PUT'])
+@authenticate(token_auth)
+@permission_required(Permission.EQUIPMENT)
+@body(equipment_parameters_schema)
+@response(equipment_schema)
+@other_responses({400: 'Parameter not found',
+                  404: 'Equipment not found'})
+def put_parameters(args, id):
+    """Set the parameter values of an equipment"""
+    equipment = db.session.get(Equipment, id) or abort(404)
+    parameter_ids = [item['parameter_id'] for item in args]
+    parameters = db.session.scalars(
+        sa.select(Parameter).where(Parameter.id.in_(parameter_ids))
+    ).all()
+    if len(parameters) != len(set(parameter_ids)):
+        abort(400, 'One or more parameter IDs are invalid.')
+    equipment.equipment_parameters = [
+        EquipmentParameter(parameter_id=item['parameter_id'],
+                           value=item.get('value'))
+        for item in args
+    ]
     db.session.commit()
     return equipment
 

@@ -12,17 +12,22 @@ from api.decorators import permission_required, paginated_response
 installations = Blueprint('installations', __name__)
 installation_schema = InstallationSchema()
 installations_schema = InstallationSchema(many=True)
+new_installation_schema = UpdateInstallationSchema()
 update_installation_schema = UpdateInstallationSchema(partial=True)
 
 
 @installations.route('/installations', methods=['POST'])
 @authenticate(token_auth)
 @permission_required(Permission.INSTALLATION)
-@body(installation_schema)
+@body(new_installation_schema)
 @response(installation_schema, 201)
+@other_responses({400: 'Invalid reference (equipment, hospital, or user not found)'})
 def new(args):
     """Create a new installation"""
-    installation = Installation(**args)
+    if 'hospital_id' not in args:
+        abort(400, 'hospital_id is required.')
+    installation = Installation(install_date=args['install_date'])
+    installation.update_installation(args)
     db.session.add(installation)
     db.session.commit()
     return installation
