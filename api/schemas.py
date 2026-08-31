@@ -3,7 +3,7 @@ from marshmallow import validate, validates, ValidationError, \
 import sqlalchemy as sa
 from api import ma, db
 from api.models import (User, UserPhoneNumber, Role, Equipment, EquipmentParameter,
-                        Parameter, Hospital, HospitalContact, Installation,
+                        Parameter, Category, Hospital, HospitalContact, Installation,
                         EquipmentInstallation, Service, ServicePart, Part)
 
 paginated_schema_cache = {}
@@ -75,18 +75,44 @@ class UserSchema(ma.SQLAlchemySchema):
     has_password = ma.Boolean(dump_only=True)
     date_of_hire = ma.auto_field()
     date_of_termination = ma.auto_field()
+    role_id = ma.Integer(load_only=True)
     role = ma.Nested(RoleSchema, dump_only=True)
     phone_numbers = ma.List(ma.Nested(UserPhoneNumberSchema()), dump_only=True)
+    phone_number_list = ma.List(ma.String(validate=validate.Length(max=50)),
+                                load_only=True)
+
+    @validates('email')
+    def validate_email(self, value, **kwargs):
+        if db.session.scalar(sa.select(User).where(User.email == value)):
+            raise ValidationError('Use a different email.')
+
+    @validates('role_id')
+    def validate_role_id(self, value, **kwargs):
+        if db.session.get(Role, value) is None:
+            raise ValidationError('Role not found.')
 
 class UpdateUserSchema(UserSchema):
     old_password = ma.String(load_only=True, validate=validate.Length(min=3))
 
+    @validates('email')
+    def validate_email(self, value, **kwargs):
+        pass
+
     @validates('old_password')
-    def validate_old_password(self, value):
+    def validate_old_password(self, value, **kwargs):
         from api.auth import token_auth
         if not token_auth.current_user().verify_password(value):
             raise ValidationError('Password is incorrect')
             
+class CategorySchema(ma.SQLAlchemySchema):
+    class Meta:
+        model = Category
+        ordered = True
+
+    id = ma.auto_field(dump_only=True)
+    name = ma.auto_field(required=True, validate=[validate.Length(max=255)])
+
+
 class ParameterSchema(ma.SQLAlchemySchema):
     class Meta:
         model = Parameter
@@ -102,6 +128,7 @@ class EquipmentParameterSchema(ma.SQLAlchemySchema):
         model = EquipmentParameter
         ordered = True
 
+    parameter_id = ma.Integer(load_only=True, required=True)
     parameter = ma.Nested(ParameterSchema(), dump_only=True)
     value = ma.auto_field()
 
@@ -118,12 +145,24 @@ class EquipmentSchema(ma.SQLAlchemySchema):
     category_id = ma.auto_field()
     ownership_type = ma.auto_field(validate=[validate.Length(max=64)])
     status = ma.auto_field(validate=[validate.Length(max=64)])
+    category = ma.Nested(CategorySchema(), dump_only=True)
     equipment_parameters = ma.List(ma.Nested(EquipmentParameterSchema()), dump_only=True)
 
     @validates('serial_number')
     def validate_serial_number(self, value, **kwargs):
         if value and db.session.scalar(sa.select(Equipment).where(Equipment.serial_number == value)):
             raise ValidationError('Use a different serial number.')
+
+    @validates('category_id')
+    def validate_category_id(self, value, **kwargs):
+        if value is not None and db.session.get(Category, value) is None:
+            raise ValidationError('Category not found.')
+
+
+class UpdateEquipmentSchema(EquipmentSchema):
+    @validates('serial_number')
+    def validate_serial_number(self, value, **kwargs):
+        pass
 
 class HospitalContactSchema(ma.SQLAlchemySchema):
     class Meta:

@@ -5,7 +5,8 @@ import sqlalchemy as sa
 
 from api import db
 from api.models import Service, ServicePart, Part, Equipment, Hospital, User, Permission
-from api.schemas import ServiceSchema, UpdateServiceSchema, PartSchema, EmptySchema
+from api.schemas import ServiceSchema, UpdateServiceSchema, PartSchema, \
+    ServicePartSchema, EmptySchema
 from api.auth import token_auth
 from api.decorators import permission_required, paginated_response
 
@@ -16,6 +17,7 @@ services_schema = ServiceSchema(many=True)
 update_service_schema = UpdateServiceSchema(partial=True)
 part_schema = PartSchema()
 parts_schema = PartSchema(many=True)
+service_part_schema = ServicePartSchema()
 
 
 # ── Service CRUD ──────────────────────────────────────────────────────────
@@ -28,6 +30,11 @@ parts_schema = PartSchema(many=True)
 @response(service_schema, 201)
 def new(args):
     """Create a new service record"""
+    if db.session.get(Equipment, args['equipment_id']) is None:
+        abort(400, 'Equipment not found or has been deleted.')
+    if 'hospital_id' in args and \
+            db.session.get(Hospital, args['hospital_id']) is None:
+        abort(400, 'Hospital not found or has been deleted.')
     service = Service(**args)
     db.session.add(service)
     db.session.commit()
@@ -133,7 +140,7 @@ def get_parts(id):
 @services.route('/services/<uuid:service_id>/parts', methods=['POST'])
 @authenticate(token_auth)
 @permission_required(Permission.INSTALLATION)
-@body(service_schema)
+@body(service_part_schema)
 @response(service_schema)
 @other_responses({400: 'Part not found',
                   404: 'Service not found'})
@@ -143,9 +150,7 @@ def add_part(args, service_id):
     The request body must include `part_id` and optionally `quantity`.
     """
     service = db.session.get(Service, service_id) or abort(404)
-    part_id = args.get('part_id')
-    if part_id is None:
-        abort(400, 'part_id is required.')
+    part_id = args['part_id']
     part = db.session.get(Part, part_id)
     if part is None:
         abort(400, 'Part not found.')

@@ -4,7 +4,7 @@ from apifairy import authenticate, body, response
 import sqlalchemy as sa
 
 from api import db
-from api.models import User, Permission
+from api.models import User, UserPhoneNumber, Role, Permission
 from api.schemas import UserSchema, UpdateUserSchema
 from api.auth import token_auth
 from api.decorators import permission_required, paginated_response
@@ -23,7 +23,16 @@ update_user_schema = UpdateUserSchema(partial=True)
 @response(user_schema, 201)
 def new(args):
     """Register a new user"""
+    phone_numbers = args.pop('phone_number_list', [])
+    if 'role_id' not in args:
+        role = db.session.scalar(
+            sa.select(Role).where(Role.name == 'Technician')
+        ) or abort(400, 'No default role available.')
+        args['role_id'] = role.id
     user = User(**args)
+    user.phone_numbers = [
+        UserPhoneNumber(phone_number=number) for number in phone_numbers
+    ]
     db.session.add(user)
     db.session.commit()
     return user
@@ -58,7 +67,12 @@ def get(id):
 def put(data, id):
     """Edit a user"""
     user = db.session.get(User, id) or abort(404)
-    user.update(data)
+    if 'phone_number_list' in data:
+        user.phone_numbers = [
+            UserPhoneNumber(phone_number=number)
+            for number in data['phone_number_list']
+        ]
+    user.update(data, ignore=['phone_number_list', 'old_password'])
     db.session.commit()
     return user
 
@@ -93,6 +107,11 @@ def put_me(data):
     if 'password' in data and ('old_password' not in data or
                                not user.verify_password(data['old_password'])):
         abort(400)
-    user.update(data)
+    if 'phone_number_list' in data:
+        user.phone_numbers = [
+            UserPhoneNumber(phone_number=number)
+            for number in data['phone_number_list']
+        ]
+    user.update(data, ignore=['phone_number_list', 'old_password', 'role_id'])
     db.session.commit()
     return user
