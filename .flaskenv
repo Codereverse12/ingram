@@ -1,0 +1,2 @@
+FLASK_APP=ingram.py
+FLASK_DEBUG=1
